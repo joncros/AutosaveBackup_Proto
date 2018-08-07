@@ -8,6 +8,7 @@ package com.joncros.github.autosavebackup_proto;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Scanner;
 import org.apache.commons.io.IOCase;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.NameFileFilter;
@@ -44,45 +45,14 @@ public class AutosaveBackup {
             */
             
             filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
-        
-            try {
-                // Initialize WatchService
-                watchService = FileSystems.getDefault().newWatchService();
-                WatchKey watchKey = folder.register(
-                    watchService, 
-                    StandardWatchEventKinds.ENTRY_CREATE, 
-                    StandardWatchEventKinds.ENTRY_MODIFY);
-                
-                //Listen for events
-                WatchKey key;
-                while((key = watchService.take()) != null) {
-                    for (WatchEvent<?> event : key.pollEvents()) {
-                        if (event.kind() == StandardWatchEventKinds.OVERFLOW) { 
-                            if (debug) System.out.println("WatchService overflow");
-                            continue;
-                        }
-                        
-                        Path filePath = folder.resolve((Path) event.context());
-                        File file = filePath.toFile();
-                        if (filter.accept(file)) {
-                            System.out.println(
-                                "File: " + event.context() +
-                                ", Event:" + event.kind());
-                        }
-                        
-                        //wait for file modify to complete [FileCnannel lock()?]
-                        //backup file [Backup.write()]
-                        
-                    }
-                    key.reset();
-                }
-            }
-            catch (IOException e) {
-                e.printStackTrace();
-            }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            
+            Thread watcherThread = new Thread(new Watcher(folder, filter));
+            watcherThread.start();
+            
+            Scanner in = new Scanner(System.in);
+            System.out.println("Enter \"quit\" to stop monitoring and exit");
+            String line = in.nextLine();
+            if (line.equalsIgnoreCase("quit")) watcherThread.interrupt();
         }
     }
     
