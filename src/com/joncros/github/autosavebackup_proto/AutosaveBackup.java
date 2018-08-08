@@ -8,11 +8,13 @@ package com.joncros.github.autosavebackup_proto;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Arrays;
 import java.util.Scanner;
 import org.apache.commons.io.IOCase;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.NameFileFilter;
-//import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Simple command-line application to monitor a folder for game Autosaves and 
@@ -20,6 +22,7 @@ import org.apache.commons.io.filefilter.NameFileFilter;
  * @author Jonathan Croskell
  */
 public class AutosaveBackup {
+    private static final Logger logger = LogManager.getLogger();
     
     /**
      * @param args the command line arguments
@@ -34,6 +37,7 @@ public class AutosaveBackup {
         String usage = "usage: AutosaveBackup [path to folder] [filename]\n";
         Boolean debug = true;
         
+        logger.trace("arguments: {}", Arrays.toString(args));
         if (args.length < 1 || args.length > 2) System.out.print(usage);
         
         else {
@@ -51,8 +55,10 @@ public class AutosaveBackup {
             
             Scanner in = new Scanner(System.in);
             System.out.println("Enter \"quit\" to stop monitoring and exit");
-            String line = in.nextLine();
-            if (line.equalsIgnoreCase("quit")) watcherThread.interrupt();
+            while (true) {
+                String line = in.nextLine();
+                if (line.trim().equalsIgnoreCase("quit")) watcherThread.interrupt();
+            }
         }
     }
     
