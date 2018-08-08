@@ -57,7 +57,10 @@ public class AutosaveBackup {
             System.out.println("Enter \"quit\" to stop monitoring and exit");
             while (true) {
                 String line = in.nextLine();
-                if (line.trim().equalsIgnoreCase("quit")) watcherThread.interrupt();
+                if (line.trim().equalsIgnoreCase("quit")) {
+                    watcherThread.interrupt();
+                    return;
+                }
             }
         }
     }
