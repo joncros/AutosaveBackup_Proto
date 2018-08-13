@@ -1,15 +1,18 @@
 /*
  * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
+ * To change this template acceptedFile, choose Tools | Templates
  * and open the template in the editor.
  */
 package com.joncros.github.autosavebackup_proto;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import static java.nio.file.StandardOpenOption.WRITE;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -45,12 +48,12 @@ class Watcher implements Runnable {
             watchService = FileSystems.getDefault().newWatchService();
             WatchKey watchKey = folder.register(
                 watchService, 
-                StandardWatchEventKinds.ENTRY_CREATE, 
                 StandardWatchEventKinds.ENTRY_MODIFY);
             logger.info("Watchservice started");
             
             //Listen for events
             WatchKey key;
+            File acceptedFile = null;
             while ((key = watchService.take()) != null) {
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
@@ -61,18 +64,34 @@ class Watcher implements Runnable {
                     logger.debug("WatchEvent file: {}, kind: {}"
                             , event.context(), event.kind());
                     Path filePath = folder.resolve((Path) event.context());
-                    File file = filePath.toFile();
-                    if (filter.accept(file)) {
-                        logger.info("File accepted by filter: {}", file);
+                    if (acceptedFile == null && filter.accept(filePath.toFile())) {
+                        acceptedFile = filePath.toFile();
+                        logger.info("File accepted by filter: {}", acceptedFile);
+                        //wait for acceptedFile modify to complete
+                        FileChannel channel = null;
+                        while (channel == null) {
+                            try {
+                                channel = new RandomAccessFile(acceptedFile, "rw").getChannel();
+                            }
+                            catch (IOException e) {
+                                //still waiting for access to acceptedFile, do nothing
+                                Thread.sleep(500);
+                            }
+                        }
+                        channel.lock();
+                        logger.trace("File lock acquired");
+                        //backup acceptedFile [Backup.write()]
                     }
 
-                    //wait for file modify to complete [FileCnannel lock()?]
-                    //backup file [Backup.write()]
+                    //wait for acceptedFile modify to complete
+                    
+                    //backup acceptedFile [Backup.write()]
                 }
                 key.reset();
             }
         } 
         catch (IOException | InterruptedException | ClosedWatchServiceException e) {
+            //todo exit on ioexception?
             logger.catching(e);
         }
     }
