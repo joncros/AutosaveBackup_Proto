@@ -53,7 +53,6 @@ class Watcher implements Runnable {
             
             //Listen for events
             WatchKey key;
-            File acceptedFile = null;
             while ((key = watchService.take()) != null) {
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
@@ -63,6 +62,7 @@ class Watcher implements Runnable {
                     
                     logger.debug("WatchEvent file: {}, kind: {}"
                             , event.context(), event.kind());
+                    File acceptedFile = null;
                     Path filePath = folder.resolve((Path) event.context());
                     if (acceptedFile == null && filter.accept(filePath.toFile())) {
                         acceptedFile = filePath.toFile();
@@ -80,18 +80,16 @@ class Watcher implements Runnable {
                         }
                         channel.lock();
                         logger.trace("File lock acquired");
-                        //backup acceptedFile [Backup.write()]
+                        Backup.write(filePath);
+                        channel.close();
                     }
-
-                    //wait for acceptedFile modify to complete
-                    
-                    //backup acceptedFile [Backup.write()]
                 }
                 key.reset();
             }
         } 
         catch (IOException | InterruptedException | ClosedWatchServiceException e) {
             //todo exit on ioexception?
+            //todo don't log InterruptedException when user types quit?
             logger.catching(e);
         }
     }
