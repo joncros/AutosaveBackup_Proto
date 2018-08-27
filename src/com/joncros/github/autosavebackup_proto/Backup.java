@@ -6,6 +6,7 @@
 package com.joncros.github.autosavebackup_proto;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -27,26 +28,31 @@ class Backup {
      * Write a copy of a file to the directory it is located in
      * @param path java.nio.file.Path Location of the file
      */
-    static void write(Path path) {
+    static void write(Path path) throws InterruptedException {
         logger.traceEntry("path: {}", path);
         //todo exception for case where path points to a directory rather than file?
         Path folder = path.getParent();
-        Path backupPath = generateBackupFilePath(folder, path.getFileName().toString());
+        Path backupPath = generateBackupPath(path);
+        boolean copied = false;
         try {
+            //todo prevent copy when file is open by another process (acquiring
+            //lock in watcher not sufficient
             Files.copy(path,backupPath);
             logger.info("File {} backed up as {}", path, backupPath.getFileName());
         }
         catch (IOException e) {
-            logger.catching(e);
+                logger.catching(e);
         }
         logger.traceExit();
     }
     
-    private static Path generateBackupFilePath(Path folder, String originalFilename) {
-        logger.traceEntry("folder: {}, original filename: {}", folder, originalFilename);
+    private static Path generateBackupPath(Path originalPath) {
+        logger.traceEntry("original file: {}", originalPath);
         //get name and extension of original file
-        String baseName = FilenameUtils.getBaseName(originalFilename) + "_copy";
-        String extension = FilenameUtils.getExtension(originalFilename);
+        String originalName = originalPath.getFileName().toString();
+        String baseName = FilenameUtils.getBaseName(originalName) + "_copy";
+        String extension = FilenameUtils.getExtension(originalName);
+        Path folder = originalPath.getParent();
         int num = 1;
         boolean exists = true;
         Path outPath = Paths.get("");
