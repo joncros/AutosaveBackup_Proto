@@ -28,9 +28,9 @@ import org.apache.logging.log4j.Logger;
 class Watcher implements Runnable {
     private static final Logger logger = LogManager.getLogger();
     WatchService watchService;
-    Boolean debug = true;
     Path folder;
     IOFileFilter filter;
+    static final int KEY_DELAY = 10000;
     
     Watcher(Path folder, IOFileFilter filter) {
         logger.traceEntry("folder: {}, FileFilter: {}", folder, filter);
@@ -54,6 +54,10 @@ class Watcher implements Runnable {
             //Listen for events
             WatchKey key;
             while ((key = watchService.take()) != null) {
+                /* Delay to prevent duplicate modify events from triggering 
+                extra backups */
+                Thread.sleep(KEY_DELAY);
+                
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
                         logger.warn("WatchService overflow event");
@@ -64,27 +68,14 @@ class Watcher implements Runnable {
                             , event.context(), event.kind());
                     File acceptedFile = null;
                     Path filePath = folder.resolve((Path) event.context());
-                    if (acceptedFile == null && filter.accept(filePath.toFile())) {
+                    if (acceptedFile == null && filter.accept(filePath.toFile())) {                    
                         acceptedFile = filePath.toFile();
                         logger.info("File accepted by filter: {}", acceptedFile);
-                        //wait for acceptedFile modify to complete
-                        FileChannel channel = null;
-                        while (channel == null) {
-                            try {
-                                channel = new RandomAccessFile(acceptedFile, "rw").getChannel();
-                            }
-                            catch (IOException e) {
-                                //still waiting for access to acceptedFile, do nothing
-                                Thread.sleep(500);
-                            }
-                        }
-                        channel.lock();
-                        logger.trace("File lock acquired");
                         Backup.write(filePath);
-                        channel.close();
                     }
                 }
                 key.reset();
+                logger.trace("Watchkey reset");
             }
         } 
         catch (IOException | InterruptedException | ClosedWatchServiceException e) {
