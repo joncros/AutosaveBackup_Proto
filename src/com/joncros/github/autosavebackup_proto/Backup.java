@@ -34,14 +34,25 @@ class Backup {
         Path folder = path.getParent();
         Path backupPath = generateBackupPath(path);
         boolean copied = false;
-        try {
-            //todo prevent copy when file is open by another process (acquiring
-            //lock in watcher not sufficient
-            Files.copy(path,backupPath);
-            logger.info("File {} backed up as {}", path, backupPath.getFileName());
-        }
-        catch (IOException e) {
-                logger.catching(e);
+        while (!copied) {
+            try {
+                Files.copy(path,backupPath);
+                copied = true;
+                logger.info("File {} backed up as {}", path, backupPath.getFileName());
+            }
+            catch (IOException e) {
+                if (e.getMessage()
+                    .contains("another process has locked a portion of the file.")
+                        ||
+                    e.getMessage().contains("being used by another process")) {
+                    logger.trace("Copy failed, waiting...");
+                    Thread.sleep(500);
+                }
+                else {
+                    logger.catching(e);
+                    return;
+                }
+            }
         }
         logger.traceExit();
     }
