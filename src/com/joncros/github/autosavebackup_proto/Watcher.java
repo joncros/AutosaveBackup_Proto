@@ -30,7 +30,6 @@ class Watcher implements Runnable {
     WatchService watchService;
     Path folder;
     IOFileFilter filter;
-    static final int KEY_DELAY = 10000;
     
     Watcher(Path folder, IOFileFilter filter) {
         logger.traceEntry("folder: {}, FileFilter: {}", folder, filter);
@@ -53,11 +52,8 @@ class Watcher implements Runnable {
             
             //Listen for events
             WatchKey key;
+            Boolean fileModified = false;
             while ((key = watchService.take()) != null) {
-                /* Delay to prevent duplicate modify events from triggering 
-                extra backups */
-                Thread.sleep(KEY_DELAY);
-                
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
                         logger.warn("WatchService overflow event");
@@ -66,12 +62,31 @@ class Watcher implements Runnable {
                     
                     logger.debug("WatchEvent file: {}, kind: {}"
                             , event.context(), event.kind());
-                    File acceptedFile = null;
                     Path filePath = folder.resolve((Path) event.context());
-                    if (acceptedFile == null && filter.accept(filePath.toFile())) {                    
-                        acceptedFile = filePath.toFile();
-                        logger.info("File accepted by filter: {}", acceptedFile);
+                    if (!fileModified && filter.accept(filePath.toFile())) {
+                        fileModified = true;
+                        logger.info("File accepted by filter: {}", filePath);
+                        
+                        //wait for modify to complete
+                        while (true) {
+                            try (FileChannel channel = 
+                                    new RandomAccessFile(filePath.toFile(), "rw")
+                                            .getChannel()){
+                                break;
+                            }
+                            catch (IOException e) {
+                                logger.trace("File modify still in progress...");
+                                Thread.sleep(250);
+                            }
+                        }
+                        
+                        /* Flush additional events that occured between the 
+                        FileFilter accepting the file and the file modification
+                        completing */
+                        logger.trace("File modify complete.");
+                        key.pollEvents();
                         Backup.write(filePath);
+                        fileModified = false;
                     }
                 }
                 key.reset();
