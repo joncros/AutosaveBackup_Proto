@@ -17,6 +17,8 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,26 +27,27 @@ import org.apache.logging.log4j.Logger;
  *
  * @author Jonathan Croskell
  */
-class Watcher implements Runnable {
+class Watcher implements Callable<Void> {
     private static final Logger logger = LogManager.getLogger();
-    WatchService watchService;
+    //WatchService watchService;
     Path folder;
     IOFileFilter filter;
+    CountDownLatch countDownLatch;
     
-    Watcher(Path folder, IOFileFilter filter) {
-        logger.traceEntry("folder: {}, FileFilter: {}", folder, filter);
+    Watcher(Path folder, IOFileFilter filter, CountDownLatch countDownLatch) {
+        logger.traceEntry("folder: {}, FileFilter: {}", folder.toAbsolutePath(), filter);
         this.folder = folder;
         this.filter = filter;
+        this.countDownLatch = countDownLatch;
         logger.traceExit();
     }
     
     @Override
-    public void run() {
+    public Void call() throws InterruptedException {
         //todo Determine if I need to check for thread interrupt and cleanup at any point
-        try {
-            // Initialize WatchService
+        try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
             logger.traceEntry();
-            watchService = FileSystems.getDefault().newWatchService();
+            //watchService = FileSystems.getDefault().newWatchService();
             WatchKey watchKey = folder.register(
                 watchService, 
                 StandardWatchEventKinds.ENTRY_MODIFY);
@@ -75,8 +78,13 @@ class Watcher implements Runnable {
                                 break;
                             }
                             catch (IOException e) {
-                                logger.trace("File modify still in progress...");
-                                Thread.sleep(250);
+                                if (e.getMessage().contains("used by another process")) {
+                                    logger.trace("File modify still in progress...");
+                                    Thread.sleep(250);
+                                }
+                                else {
+                                    throw e;
+                                }
                             }
                         }
                         
@@ -93,10 +101,14 @@ class Watcher implements Runnable {
                 logger.trace("Watchkey reset");
             }
         } 
-        catch (IOException | InterruptedException | ClosedWatchServiceException e) {
-            //todo exit on ioexception?
-            //todo don't log InterruptedException when user types quit?
-            logger.catching(e);
+        catch (InterruptedException | IOException | ClosedWatchServiceException e) {
+            InterruptedException ie = new InterruptedException();
+            ie.addSuppressed(e);
+            countDownLatch.countDown();
+            logger.traceExit();
+            throw ie;
         }
+        
+        return null;
     }
 }
