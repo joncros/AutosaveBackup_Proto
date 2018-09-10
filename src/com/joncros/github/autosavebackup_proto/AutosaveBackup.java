@@ -10,6 +10,12 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Scanner;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import org.apache.commons.io.IOCase;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.NameFileFilter;
@@ -31,38 +37,68 @@ public class AutosaveBackup {
      */
     public static void main(String[] args) {
         Path folder;
-        String filename;
         IOFileFilter filter;
-        WatchService watchService;
-        String usage = "usage: AutosaveBackup [path to folder] [filename]\n";
-        Boolean debug = true;
-        
+        ExecutorService es;
+        CountDownLatch countDownLatch;
+        String usage = "\nusage: AutosaveBackup [path to folder] [filename]\n";
+      
         logger.trace("arguments: {}", Arrays.toString(args));
-        if (args.length < 1 || args.length > 2) System.out.print(usage);
+        try {
+            if (args.length < 1 
+                    || args.length > 2
+                    || !Files.isDirectory(Paths.get(args[0]))) {
+                System.out.print(usage);
+                return;
+            }    
+        }
+        catch (InvalidPathException e) {
+            System.out.print("\nPath to folder is invalid");
+            System.out.print(usage);
+            return;
+        }
         
-        else {
+        es = Executors.newFixedThreadPool(2);
+        countDownLatch = new CountDownLatch(1);
+        try {
             folder = Paths.get(args[0]);
-            
-            /* Logic if filename is optional
-            if (args.length == 1) filter = TrueFileFilter.TRUE;
-            else filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
-            */
-            
             filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
+
+            //Start a Watcher in es
+            //es.submit(new Watcher(folder,filter));
+            Future<?> watcherFuture = 
+                    es.submit(new Watcher(folder, filter, countDownLatch));
             
-            Thread watcherThread = new Thread(new Watcher(folder, filter));
-            watcherThread.start();
+
+            //Start a ConsoleInput in es
+            es.submit(new ConsoleInputTask(countDownLatch));
             
-            Scanner in = new Scanner(System.in);
-            System.out.println("Enter \"quit\" to stop monitoring and exit");
-            while (true) {
-                String line = in.nextLine();
-                if (line.trim().equalsIgnoreCase("quit")) {
-                    watcherThread.interrupt();
-                    return;
-                }
+            countDownLatch.await();
+            //Pause to make sure task that called countDownLatch.countDown() 
+            //has completed
+            Thread.sleep(500);
+            if (watcherFuture.isDone()) {
+                //get exception thrown by Watcher
+                watcherFuture.get();
             }
         }
+        catch (InterruptedException | ExecutionException e) {
+            logger.trace("Interruption with following exception(s):");
+            for (Throwable t: e.getCause().getSuppressed()) {
+                logger.catching(t);
+            }
+        }
+        finally {
+            logger.trace("main() finally reached");
+            es.shutdownNow();
+        }
     }
+    
+    /* Logic if filename is optional
+                if (args.length == 1) filter = TrueFileFilter.TRUE;
+                else filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
+                */
+                
+                //TODO possibly logic for multiple named save files to back up
+                //TODO possibly logic for wildcard in save file name(s)
     
 }
