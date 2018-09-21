@@ -29,10 +29,9 @@ import org.apache.logging.log4j.Logger;
  */
 class Watcher implements Callable<Void> {
     private static final Logger logger = LogManager.getLogger();
-    //WatchService watchService;
-    Path folder;
-    IOFileFilter filter;
-    CountDownLatch countDownLatch;
+    private final Path folder;
+    private final IOFileFilter filter;
+    private final CountDownLatch countDownLatch;
     
     Watcher(Path folder, IOFileFilter filter, CountDownLatch countDownLatch) {
         logger.traceEntry("folder: {}, FileFilter: {}", folder.toAbsolutePath(), filter);
@@ -47,7 +46,6 @@ class Watcher implements Callable<Void> {
         //todo Determine if I need to check for thread interrupt and cleanup at any point
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
             logger.traceEntry();
-            //watchService = FileSystems.getDefault().newWatchService();
             WatchKey watchKey = folder.register(
                 watchService, 
                 StandardWatchEventKinds.ENTRY_MODIFY);
@@ -55,7 +53,10 @@ class Watcher implements Callable<Void> {
             
             //Listen for events
             WatchKey key;
-            Boolean fileModified = false;
+            /*boolean set to true upon first matching modify event, prevents 
+            Watcher from responding to duplicate modify events */
+            boolean fileModified = false;
+            //todo is this while condition useful?
             while ((key = watchService.take()) != null) {
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
@@ -88,10 +89,10 @@ class Watcher implements Callable<Void> {
                             }
                         }
                         
+                        logger.trace("File modify complete.");
                         /* Flush additional events that occured between the 
                         FileFilter accepting the file and the file modification
                         completing */
-                        logger.trace("File modify complete.");
                         key.pollEvents();
                         Backup.write(filePath);
                         fileModified = false;

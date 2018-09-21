@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ConsoleInputTask implements Callable<String> {
     private static final Logger logger = LogManager.getLogger();
-    CountDownLatch countDownLatch;
+    private final CountDownLatch countDownLatch;
     
     public ConsoleInputTask(CountDownLatch countDownLatch) {
         this.countDownLatch = countDownLatch;
