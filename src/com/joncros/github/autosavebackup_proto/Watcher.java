@@ -11,6 +11,7 @@ import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import static java.nio.file.StandardOpenOption.WRITE;
 import java.nio.file.StandardWatchEventKinds;
@@ -44,8 +45,8 @@ class Watcher implements Callable<Void> {
     @Override
     public Void call() throws InterruptedException {
         //todo Determine if I need to check for thread interrupt and cleanup at any point
+        logger.traceEntry();
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
-            logger.traceEntry();
             WatchKey watchKey = folder.register(
                 watchService, 
                 StandardWatchEventKinds.ENTRY_MODIFY);
@@ -71,25 +72,8 @@ class Watcher implements Callable<Void> {
                         fileModified = true;
                         logger.info("File accepted by filter: {}", filePath);
                         
-                        //wait for modify to complete
-                        while (true) {
-                            try (FileChannel channel = 
-                                    new RandomAccessFile(filePath.toFile(), "rw")
-                                            .getChannel()){
-                                break;
-                            }
-                            catch (IOException e) {
-                                if (e.getMessage().contains("used by another process")) {
-                                    logger.trace("File modify still in progress...");
-                                    Thread.sleep(250);
-                                }
-                                else {
-                                    throw e;
-                                }
-                            }
-                        }
+                        awaitModifyCompletion(filePath);
                         
-                        logger.trace("File modify complete.");
                         /* Flush additional events that occured between the 
                         FileFilter accepting the file and the file modification
                         completing */
@@ -103,6 +87,7 @@ class Watcher implements Callable<Void> {
             }
         } 
         catch (InterruptedException | IOException | ClosedWatchServiceException e) {
+            //TODO consider if appropriate to rewrap all exceptions in an InterruptedException
             InterruptedException ie = new InterruptedException();
             ie.addSuppressed(e);
             countDownLatch.countDown();
@@ -111,5 +96,22 @@ class Watcher implements Callable<Void> {
         }
         
         return null;
+    }
+    
+    /* Blocks until the file denoted by the path is accessible, meaning any 
+    external program writing to the file has finished writing */
+    private void awaitModifyCompletion(Path path) 
+            throws InterruptedException, IOException {
+        File file = path.toFile();
+        while (true) {
+            if (file.renameTo(file)) {  
+                logger.traceExit("File modify complete.");
+                return;
+            }
+            else { 
+                logger.trace("File modify still in progress...");
+                Thread.sleep(250);
+            }
+        }
     }
 }
