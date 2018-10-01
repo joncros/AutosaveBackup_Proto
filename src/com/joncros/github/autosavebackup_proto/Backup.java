@@ -25,7 +25,10 @@ class Backup {
     private static final Logger logger = LogManager.getLogger();
     
     /**
-     * Write a copy of a file to the directory it is located in
+     * Writes a copy of a file to the directory it is located in without 
+     * overwriting the original file or any previous copies. 
+     * Uses a filename of the format originalBaseName_copyN.originalExtension, 
+     * where N is an integer.
      * @param path java.nio.file.Path Location of the file
      */
     static void write(Path path) throws InterruptedException {
@@ -49,6 +52,7 @@ class Backup {
                     Thread.sleep(500);
                 }
                 else {
+                    //todo consider whether to throw IOException
                     logger.catching(e);
                     return;
                 }
@@ -57,6 +61,18 @@ class Backup {
         logger.traceExit();
     }
     
+    /**
+     * Generates a Path for copying a file without overwriting the file or  
+     * previous copies of that file
+     * @param originalPath Path to original file
+     * @return Path pointing to the same folder, with filename in the format
+     *      originalBaseName_copyN.originalExtension, 
+     * where
+     *      originalBaseName is the filename referred to by originalPath 
+     *          (excluding the "." and extension)
+     *      N is an integer that is one more than the number of other copies
+     *          that exist in the folder
+     */
     private static Path generateBackupPath(Path originalPath) {
         logger.traceEntry("original file: {}", originalPath);
         //get name and extension of original file
@@ -64,19 +80,12 @@ class Backup {
         String baseName = FilenameUtils.getBaseName(originalName) + "_copy";
         String extension = FilenameUtils.getExtension(originalName);
         Path folder = originalPath.getParent();
-        int num = 1;
-        boolean exists = true;
-        Path outPath = Paths.get("");
-        while (exists) {
-            outPath = folder.resolve(baseName + num + "." + extension);
-            if (Files.exists(outPath)) {
-                num++;
-                logger.trace("File {} exists, incrementing num to {}.", outPath, num);
-            }
-            else {
-                exists = false;
-            }
-        }
+        int num = 1;  //Postfix to apply to copy filename
+        Path outPath;
+        do {
+            outPath = folder.resolve(baseName + num++ + "." + extension);
+            logger.trace("Checking if file {} exists", outPath);
+        } while (Files.exists(outPath));
         return logger.traceExit(outPath);
     }
 }
