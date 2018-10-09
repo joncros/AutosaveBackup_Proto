@@ -32,14 +32,10 @@ public class AutosaveBackup {
     
     /**
      * @param args the command line arguments
-     * First argument (required) is the path to the folder to watch
-     * Second argument is the file name to watch for
+     * First argument (required) is the path to the folder to watch.
+     * Second argument is the file name to watch for.
      */
     public static void main(String[] args) {
-        Path folder;
-        IOFileFilter filter;
-        ExecutorService es;
-        CountDownLatch countDownLatch;
         String usage = "\nusage: AutosaveBackup [path to folder] [filename]\n";
       
         logger.trace("arguments: {}", Arrays.toString(args));
@@ -57,27 +53,32 @@ public class AutosaveBackup {
             return;
         }
         
-        es = Executors.newFixedThreadPool(2);
-        countDownLatch = new CountDownLatch(1);
+        ExecutorService es = Executors.newFixedThreadPool(2);
+        
+        /* 
+        * Countdownlatch signalled when either the Watcher thread or
+        * ConsoleInputTask thread has ended, prompting main to continue.
+        */
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+        Path folder = Paths.get(args[0]);
+        IOFileFilter filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
         try {
-            folder = Paths.get(args[0]);
-            filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
-
-            //Start a Watcher in es
-            //es.submit(new Watcher(folder,filter));
+            //Start Watcher
             Future<?> watcherFuture = 
                     es.submit(new Watcher(folder, filter, countDownLatch));
             
-
-            //Start a ConsoleInput in es
+            //Start listening to console
             es.submit(new ConsoleInputTask(countDownLatch));
             
             countDownLatch.await();
-            //Pause to make sure task that called countDownLatch.countDown() 
-            //has completed
+            
+            /*
+            * Pause to make sure task that called countDownLatch.countDown() 
+            * has completed
+            */
             Thread.sleep(500);
             if (watcherFuture.isDone()) {
-                //get exception thrown by Watcher
+                //get exception(s) thrown by Watcher
                 watcherFuture.get();
             }
         }
@@ -91,14 +92,5 @@ public class AutosaveBackup {
             logger.trace("main() finally reached");
             es.shutdownNow();
         }
-    }
-    
-    /* Logic if filename is optional
-                if (args.length == 1) filter = TrueFileFilter.TRUE;
-                else filter = new NameFileFilter(args[1], IOCase.INSENSITIVE);
-                */
-                
-                //TODO possibly logic for multiple named save files to back up
-                //TODO possibly logic for wildcard in save file name(s)
-    
+    }    
 }
