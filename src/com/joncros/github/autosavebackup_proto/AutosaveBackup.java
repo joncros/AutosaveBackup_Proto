@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Scanner;
+import java.util.StringJoiner;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -23,19 +24,34 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Simple command-line application for Windows to monitor a folder for a single 
- * Autosave or other file with a specific filename, creating a backup each time
- * the file is modified.
+ * Simple command-line application (for use with Windows applications that make 
+ * a limited number of autosaves) to backup autosaves. Monitors a folder for a 
+ * single autosave or other file with a specific filename, creating a backup 
+ * each time the file is modified.
  * @author Jonathan Croskell
  */
 public class AutosaveBackup {
     private static final Logger logger = LogManager.getLogger();
     private final Path folder;
     private final IOFileFilter filter;
-    private static final String USAGE = 
-            "\nusage: AutosaveBackup [path to folder] [filename] will start the "
-            + "program with the specified folder and filename\n";
+    private static final String DESCRIPTION = 
+            "Watches for a specific file at the specified location, backing it "
+            + "up (without overwriting previous backups) in the same folder using"
+            + " the pattern [original filename]_copyN.[original extension], where N"
+            + " is a whole number. Highest numbered copy is the most recent one.";
+    private static final String USAGE =
+            "\nusage: AutosaveBackup [file]"
+            + "\n where [file] is the location and filename (including extension"
+            + " of the file to monitor, i.e., c:\\game\\saves\\save1.sav "
+            + "(spaces are allowed in the file path; do not surround the path "
+            + "with quotation marks).";
     
+    
+    /**
+     * 
+     * @param folder Must be a folder that exists
+     * @param filename String, cannot be null or empty
+     */
     public AutosaveBackup (Path folder, String filename) {
         if (!Files.isDirectory(folder)) {
             throw new IllegalArgumentException("Path does not point to an "
@@ -50,56 +66,24 @@ public class AutosaveBackup {
     
     /**
      * @param args the command line arguments
-     * First argument (required) is the path to the folder to watch.
-     * Second argument is the file name to watch for.
+     * args is the full path to the file to watch for
      */
     public static void main(String[] args) {
         logger.trace("arguments: {}", Arrays.toString(args));
         
-        Path folder = Paths.get("");
-        String filename = "";
-        boolean validInput = false;
-        
-        /* 
-        * If two or more command line args provided and first arg is a valid 
-        * path, obtain filename from remaining args.
-        */
-        if (args.length >= 2
-                && (folder = validateFolderPath(args[0])) != null) {
-            validInput = true;
-            filename = args[1];
-            
-            // for case where spaces exist in the filename, so args.length > 2
-            for (int i = 2; i < args.length; i++) {
-                filename = filename + " " + args[i];
-            }
-        }
-        else {
-            System.out.print(USAGE);
-        }
-        while (!validInput) {
-            Scanner in = new Scanner(System.in);
-            System.out.println("Type the full path to the folder to monitor:");
-            folder = validateFolderPath(in.nextLine());
-            if (folder == null) {
-                //didn't get a valid folder path, prompt for folder again
-                continue;
-            }
-            System.out.println("Type the filename (including extension) of "
-                + "the file to watch for");
-            filename = in.nextLine();
-            validInput = true;
+        if (args.length == 0) {
+            System.out.println(DESCRIPTION);
+            System.out.println(USAGE);
+            return;
         }
         
-        //remove any ' or " charagers if user surrounded filename in quotes
-        char first = filename.charAt(0);
-        char last = filename.charAt(filename.length() - 1);
-        if (first == '\'' || first == '\"'
-                && 
-                last == '\'' || last == '\"') {
-            filename = filename.substring(1, filename.length()-1);
-        }
-        
+        //parse the folder and filename from args
+        String argsString = argsAsSingleString(args);
+        int separatorPosition = argsString.lastIndexOf(File.separatorChar);
+        Path folder = Paths.get(argsString.substring(0, separatorPosition));
+        String filename = 
+                argsString.substring(separatorPosition+1, argsString.length() -1);
+                
         AutosaveBackup ab = new AutosaveBackup(folder, filename);
         ab.start();
     }
@@ -109,10 +93,12 @@ public class AutosaveBackup {
         ExecutorService es = Executors.newFixedThreadPool(2);
         
         /* 
-        * Countdownlatch signalled when either the Watcher thread or
-        * ConsoleInputTask thread has ended, prompting main to continue.
+        * CountDownlatch passed to the Watcher thread and ConsoleInputTask. 
+        * The thread that completes first uses countDownLatch to signal this 
+        * thread, prompting it to proceed to cleanup and shut down es.
         */
         CountDownLatch countDownLatch = new CountDownLatch(1);
+        
         try {
             //Start Watcher
             Future<?> watcherFuture = 
@@ -133,11 +119,11 @@ public class AutosaveBackup {
                 watcherFuture.get();
             }
         }
-        catch (InterruptedException | ExecutionException e) {
-            logger.trace("Interruption with following exception(s):");
-            for (Throwable t: e.getCause().getSuppressed()) {
-                logger.catching(t);
-            }
+        catch (InterruptedException e) {
+            logger.catching(e);
+        }
+        catch (ExecutionException e) {
+            logger.catching(e.getCause());
         }
         finally {
             logger.trace("main() finally reached");
@@ -146,26 +132,17 @@ public class AutosaveBackup {
         logger.traceExit();
     }
     
-    /*
-    * Helper that 
-    * @returns a Path corresponding to the String, or null if the Path does not
-    * point to an existing folder or an InvalidPathException is encountered
-    */
-    private static Path validateFolderPath(String pathString) {
-        try {
-            Path path = Paths.get(pathString);
-            if (Files.isDirectory(path)) {
-                return path;
-            }
-            else {
-                System.out.println("Error: location is not a directory or does"
-                        + " not exist");
-                return null;
-            }
+    /**
+     * Helper for processing command line args. Joins args into a single String 
+     * from which a file path can be parsed.
+     * @param args an array of Strings
+     * @return a String
+     */
+    private static String argsAsSingleString(String[] args) {
+        StringJoiner stringJoiner = new StringJoiner(" ");
+        for (String s: args) {
+            stringJoiner.add(s);
         }
-        catch (InvalidPathException e) {
-            System.out.println("Error: illegal characters in path.");
-            return null;
-        }
+        return stringJoiner.toString();
     }
 }
