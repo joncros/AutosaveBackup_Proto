@@ -25,7 +25,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- *
+ * Windows-only: depends on specific windows filesystem behavior to determine 
+ * when a file write has completed.
  * @author Jonathan Croskell
  */
 class Watcher implements Callable<Void> {
@@ -43,7 +44,7 @@ class Watcher implements Callable<Void> {
     }
     
     @Override
-    public Void call() throws InterruptedException {
+    public Void call() throws InterruptedException, IOException {
         //todo Determine if I need to check for thread interrupt and cleanup at any point
         logger.traceEntry();
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
@@ -52,13 +53,14 @@ class Watcher implements Callable<Void> {
                 StandardWatchEventKinds.ENTRY_MODIFY);
             logger.info("Watchservice started");
             
-            //Listen for events
-            WatchKey key;
-            /*boolean set to true upon first matching modify event, prevents 
+            
+            /* boolean set to true upon first matching modify event, prevents 
             Watcher from responding to duplicate modify events */
             boolean fileModified = false;
-            //todo is this while condition useful?
-            while ((key = watchService.take()) != null) {
+            
+            //Listen for events
+            while(!Thread.interrupted()) {
+                WatchKey key = watchService.take();
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
                         logger.warn("WatchService overflow event");
@@ -86,20 +88,19 @@ class Watcher implements Callable<Void> {
                 logger.trace("Watchkey reset");
             }
         } 
-        catch (InterruptedException | IOException | ClosedWatchServiceException e) {
-            //TODO consider if appropriate to rewrap all exceptions in an InterruptedException
-            InterruptedException ie = new InterruptedException();
-            ie.addSuppressed(e);
+        catch (IOException e) {
             countDownLatch.countDown();
-            logger.traceExit();
-            throw ie;
+            logger.traceExit(); //TODO decide if this belongs
+            throw e;
         }
         
         return null;
     }
     
-    /* Blocks until the file denoted by the path is accessible, meaning any 
-    external program writing to the file has finished writing */
+    /* 
+    * Blocks until the file denoted by the path is accessible, meaning any 
+    * external program writing to the file has finished writing.
+    */
     private void awaitModifyCompletion(Path path) 
             throws InterruptedException, IOException {
         File file = path.toFile();
