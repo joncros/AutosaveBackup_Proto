@@ -6,17 +6,14 @@
 package com.joncros.github.autosavebackup_proto;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.*;
 import java.util.Arrays;
-import java.util.Scanner;
 import java.util.StringJoiner;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
 import org.apache.commons.io.IOCase;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.NameFileFilter;
@@ -48,9 +45,12 @@ public class AutosaveBackup {
     
     
     /**
-     * 
+     * Instance that watches a folder and backs up the file indicated by filename
+     * whenever the file is created or modified.
      * @param folder Must be a folder that exists
      * @param filename String, cannot be null or empty
+     * @throws IllegalArgumentException if folder does not exist or is not a 
+     * folder, or if filename is an empty String
      */
     public AutosaveBackup (Path folder, String filename) {
         if (!Files.isDirectory(folder)) {
@@ -88,6 +88,11 @@ public class AutosaveBackup {
         ab.start();
     }
     
+    /**
+     * Starts a thread to monitor the folder and make appropriate backups.
+     * Starts a thread to monitor the command line for user input; if the user 
+     * types "quit", the program will shut down.
+     */
     public void start() {
         logger.traceEntry();
         ExecutorService es = Executors.newFixedThreadPool(2);
@@ -115,7 +120,7 @@ public class AutosaveBackup {
             */
             Thread.sleep(500);
             if (watcherFuture.isDone()) {
-                //get exception(s) thrown by Watcher
+                //get exception thrown by Watcher
                 watcherFuture.get();
             }
         }
@@ -136,7 +141,7 @@ public class AutosaveBackup {
      * Helper for processing command line args. Joins args into a single String 
      * from which a file path can be parsed.
      * @param args an array of Strings
-     * @return a String
+     * @return a String, preserving the white space from the original typed input.
      */
     private static String argsAsSingleString(String[] args) {
         StringJoiner stringJoiner = new StringJoiner(" ");

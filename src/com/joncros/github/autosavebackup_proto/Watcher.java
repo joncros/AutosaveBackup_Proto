@@ -5,15 +5,10 @@
  */
 package com.joncros.github.autosavebackup_proto;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
-import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import static java.nio.file.StandardOpenOption.WRITE;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -25,8 +20,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Windows-only: depends on specific windows filesystem behavior to determine 
- * when a file write has completed.
+ * Task that uses a WatchService to monitor a folder for a specific file, 
+ * using the Backup class to back up the file whenever it is modified.
  * @author Jonathan Croskell
  */
 class Watcher implements Callable<Void> {
@@ -35,8 +30,17 @@ class Watcher implements Callable<Void> {
     private final IOFileFilter filter;
     private final CountDownLatch countDownLatch;
     
+    /**
+     * 
+     * @param folder Folder to watch
+     * @param filter org.apache.commons.io.filefilter.IOFileFilter which will 
+     * accept the file to be monitored.
+     * @param countDownLatch Signalled if the thread exits due to an IOException, 
+     * prompting the main thread to execute shutdown.
+     */
     Watcher(Path folder, IOFileFilter filter, CountDownLatch countDownLatch) {
         logger.traceEntry("folder: {}, FileFilter: {}", folder.toAbsolutePath(), filter);
+        assert(Files.isDirectory(folder));
         this.folder = folder;
         this.filter = filter;
         this.countDownLatch = countDownLatch;
@@ -45,7 +49,6 @@ class Watcher implements Callable<Void> {
     
     @Override
     public Void call() throws InterruptedException, IOException {
-        //todo Determine if I need to check for thread interrupt and cleanup at any point
         logger.traceEntry();
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
             WatchKey watchKey = folder.register(
@@ -54,8 +57,10 @@ class Watcher implements Callable<Void> {
             logger.info("Watchservice started");
             
             
-            /* boolean set to true upon first matching modify event, prevents 
-            Watcher from responding to duplicate modify events */
+            /* 
+             * boolean set to true upon first matching modify event, prevents 
+             * Watcher from responding to duplicate modify events 
+             */
             boolean fileModified = false;
             
             //Listen for events
@@ -67,8 +72,8 @@ class Watcher implements Callable<Void> {
                         continue;
                     }
                     
-                    logger.debug("WatchEvent file: {}, kind: {}"
-                            , event.context(), event.kind());
+                    logger.debug("WatchEvent file: {}, kind: {}",
+                            event.context(), event.kind());
                     Path filePath = folder.resolve((Path) event.context());
                     if (!fileModified && filter.accept(filePath.toFile())) {
                         fileModified = true;
@@ -82,7 +87,6 @@ class Watcher implements Callable<Void> {
                         * accepting the file and the file backup completing.
                         */
                         key.pollEvents();
-                        //Backup.write(filePath);
                         fileModified = false;
                     }
                 }
@@ -92,7 +96,7 @@ class Watcher implements Callable<Void> {
         } 
         catch (IOException e) {
             countDownLatch.countDown();
-            logger.traceExit(); //TODO decide if this belongs
+            logger.traceExit();
             throw e;
         }
     }

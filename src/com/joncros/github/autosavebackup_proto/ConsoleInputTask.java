@@ -8,20 +8,24 @@ package com.joncros.github.autosavebackup_proto;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Scanner;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- *
+ * Waits for console input without blocking. Prompts program shutdown when
+ * "quit" is typed.
  * @author Jonathan Croskell
  */
 public class ConsoleInputTask implements Callable<String> {
     private static final Logger logger = LogManager.getLogger();
     private final CountDownLatch countDownLatch;
     
+    /**
+     * 
+     * @param countDownLatch Used to signal other thread(s) when this task exits.
+     */
     public ConsoleInputTask(CountDownLatch countDownLatch) {
         this.countDownLatch = countDownLatch;
     }
@@ -30,6 +34,7 @@ public class ConsoleInputTask implements Callable<String> {
     public String call() throws IOException {
         logger.traceEntry();
         String input = null;
+        System.out.println("Type \"quit\" to exit");
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(System.in))) {
             while (true) {
@@ -46,9 +51,11 @@ public class ConsoleInputTask implements Callable<String> {
         }
         catch (InterruptedException e) {
             logger.traceExit("Interrupted");
-            countDownLatch.countDown();
             return null;
         }
+        catch (IOException e) {
+            countDownLatch.countDown();
+            throw e;
+        }
     }
-    
 }

@@ -7,17 +7,15 @@ package com.joncros.github.autosavebackup_proto;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.commons.io.FilenameUtils;
 
 /**
- * Provides a static method to write a copy of a file to the directory it exists
- * in. Does not overwrite previous copies. Uses the pattern 
+ * Provides a method to write a copy of a file to the directory it exists in. 
+ * Does not overwrite previous copies. Uses the pattern 
  * [original filename}_copy[number].[original extension] and increments 
  * the number as necessary for a unique filename.
  * @author Jonathan Croskell
@@ -27,14 +25,14 @@ class Backup {
     
     /**
      * Writes a copy of a file to the directory it is located in without 
-     * overwriting the original file or any previous copies. 
-     * Uses a filename of the format originalBaseName_copyN.originalExtension, 
-     * where N is an integer.
+     * overwriting the original file or any previous copies.
      * @param originalFile java.nio.file.Path Location of the file
+     * @throws InterruptedException
+     * @throws IOException 
      */
     static void write(Path originalFile) throws InterruptedException, IOException {
         logger.traceEntry("path: {}", originalFile);
-        assert(!Files.isDirectory(originalFile));
+        assert(Files.isRegularFile(originalFile));
         Path backupPath = generateBackupPath(originalFile);
         awaitModifyCompletion(originalFile);
         Files.copy(originalFile,backupPath);
@@ -44,15 +42,13 @@ class Backup {
     
     /**
      * Generates a Path for copying a file without overwriting the file or  
-     * previous copies of that file
+     * existing copies of that file.
      * @param originalFile Path to original file
      * @return Path pointing to the same folder, with filename in the format
-      originalBaseName_copyN.originalExtension, 
- where
-      originalBaseName is the filename referred to by originalFile 
-          (excluding the "." and extension)
-      N is an integer that is one more than the number of other copies
-          that exist in the folder
+     * originalBaseName_copyN.originalExtension, where
+     * originalBaseName is the filename referred to by originalFile 
+     * (excluding the "." and extension) and N is an integer that is one more 
+     * than the number of other copies that exist in the folder
      */
     private static Path generateBackupPath(Path originalFile) {
         logger.traceEntry("original file: {}", originalFile);
@@ -72,16 +68,23 @@ class Backup {
         return logger.traceExit(outPath);
     }
     
+    /**
+     * Windows-specific helper that returns once the modification to the file
+     * completes.
+     * @param path
+     * @throws InterruptedException
+     * @throws IOException 
+     */
     private static void awaitModifyCompletion(Path path) 
             throws InterruptedException, IOException {
+        logger.traceEntry("File: {}", path);
         File file = path.toFile();
         while (true) {
             if (file.renameTo(file)) {  
                 logger.traceExit("File modify complete.");
                 return;
             }
-            else { 
-                logger.trace("File modify still in progress...");
+            else {
                 Thread.sleep(250);
             }
         }
