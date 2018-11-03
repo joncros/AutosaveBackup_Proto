@@ -5,6 +5,7 @@
  */
 package com.joncros.github.autosavebackup_proto;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Path;
@@ -29,63 +30,60 @@ class Backup {
      * overwriting the original file or any previous copies. 
      * Uses a filename of the format originalBaseName_copyN.originalExtension, 
      * where N is an integer.
-     * @param path java.nio.file.Path Location of the file
+     * @param originalFile java.nio.file.Path Location of the file
      */
-    static void write(Path path) throws InterruptedException {
-        logger.traceEntry("path: {}", path);
-        //todo exception for case where path points to a directory rather than file?
-        Path folder = path.getParent();
-        Path backupPath = generateBackupPath(path);
-        boolean copied = false;
-        while (!copied) {
-            try {
-                Files.copy(path,backupPath);
-                copied = true;
-                logger.info("File {} backed up as {}", path, backupPath.getFileName());
-            }
-            catch (IOException e) {
-                if (e.getMessage()
-                    .contains("another process has locked a portion of the file.")
-                        ||
-                    e.getMessage().contains("being used by another process")) {
-                    logger.trace("Copy failed, waiting...");
-                    Thread.sleep(500);
-                }
-                else {
-                    //todo consider whether to throw IOException
-                    logger.catching(e);
-                    return;
-                }
-            }
-        }
+    static void write(Path originalFile) throws InterruptedException, IOException {
+        logger.traceEntry("path: {}", originalFile);
+        assert(!Files.isDirectory(originalFile));
+        Path backupPath = generateBackupPath(originalFile);
+        awaitModifyCompletion(originalFile);
+        Files.copy(originalFile,backupPath);
+        logger.info("File {} backed up as {}", originalFile, backupPath.getFileName());
         logger.traceExit();
     }
     
     /**
      * Generates a Path for copying a file without overwriting the file or  
      * previous copies of that file
-     * @param originalPath Path to original file
+     * @param originalFile Path to original file
      * @return Path pointing to the same folder, with filename in the format
-     *      originalBaseName_copyN.originalExtension, 
-     * where
-     *      originalBaseName is the filename referred to by originalPath 
-     *          (excluding the "." and extension)
-     *      N is an integer that is one more than the number of other copies
-     *          that exist in the folder
+      originalBaseName_copyN.originalExtension, 
+ where
+      originalBaseName is the filename referred to by originalFile 
+          (excluding the "." and extension)
+      N is an integer that is one more than the number of other copies
+          that exist in the folder
      */
-    private static Path generateBackupPath(Path originalPath) {
-        logger.traceEntry("original file: {}", originalPath);
+    private static Path generateBackupPath(Path originalFile) {
+        logger.traceEntry("original file: {}", originalFile);
+        
         //get name and extension of original file
-        String originalName = originalPath.getFileName().toString();
+        String originalName = originalFile.getFileName().toString();
         String baseName = FilenameUtils.getBaseName(originalName) + "_copy";
         String extension = FilenameUtils.getExtension(originalName);
-        Path folder = originalPath.getParent();
+        Path folder = originalFile.getParent();
         int num = 1;  //Postfix to apply to copy filename
         Path outPath;
         do {
-            outPath = folder.resolve(baseName + num++ + "." + extension);
+            outPath = folder.resolve(baseName + num + "." + extension);
             logger.trace("Checking if file {} exists", outPath);
+            num++; //postfix to use next if file at outPath exists
         } while (Files.exists(outPath));
         return logger.traceExit(outPath);
+    }
+    
+    private static void awaitModifyCompletion(Path path) 
+            throws InterruptedException, IOException {
+        File file = path.toFile();
+        while (true) {
+            if (file.renameTo(file)) {  
+                logger.traceExit("File modify complete.");
+                return;
+            }
+            else { 
+                logger.trace("File modify still in progress...");
+                Thread.sleep(250);
+            }
+        }
     }
 }

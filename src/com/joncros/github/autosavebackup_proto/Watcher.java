@@ -59,7 +59,7 @@ class Watcher implements Callable<Void> {
             boolean fileModified = false;
             
             //Listen for events
-            while(!Thread.interrupted()) {
+            for(;;) {
                 WatchKey key = watchService.take();
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
@@ -74,13 +74,15 @@ class Watcher implements Callable<Void> {
                         fileModified = true;
                         logger.info("File accepted by filter: {}", filePath);
                         
-                        awaitModifyCompletion(filePath);
-                        
-                        /* Flush additional events that occured between the 
-                        FileFilter accepting the file and the file modification
-                        completing */
-                        key.pollEvents();
                         Backup.write(filePath);
+                        
+                        /* 
+                        * Avoid responding to extra MODIFY events by flushing 
+                        * additional events that occured between the filter
+                        * accepting the file and the file backup completing.
+                        */
+                        key.pollEvents();
+                        //Backup.write(filePath);
                         fileModified = false;
                     }
                 }
@@ -92,27 +94,6 @@ class Watcher implements Callable<Void> {
             countDownLatch.countDown();
             logger.traceExit(); //TODO decide if this belongs
             throw e;
-        }
-        
-        return null;
-    }
-    
-    /* 
-    * Blocks until the file denoted by the path is accessible, meaning any 
-    * external program writing to the file has finished writing.
-    */
-    private void awaitModifyCompletion(Path path) 
-            throws InterruptedException, IOException {
-        File file = path.toFile();
-        while (true) {
-            if (file.renameTo(file)) {  
-                logger.traceExit("File modify complete.");
-                return;
-            }
-            else { 
-                logger.trace("File modify still in progress...");
-                Thread.sleep(250);
-            }
         }
     }
 }
