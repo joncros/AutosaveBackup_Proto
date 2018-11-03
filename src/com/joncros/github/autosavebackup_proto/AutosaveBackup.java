@@ -82,7 +82,7 @@ public class AutosaveBackup {
         int separatorPosition = argsString.lastIndexOf(File.separatorChar);
         Path folder = Paths.get(argsString.substring(0, separatorPosition));
         String filename = 
-                argsString.substring(separatorPosition+1, argsString.length() -1);
+                argsString.substring(separatorPosition+1, argsString.length());
                 
         AutosaveBackup ab = new AutosaveBackup(folder, filename);
         ab.start();
