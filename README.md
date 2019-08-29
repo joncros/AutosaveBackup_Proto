@@ -1,8 +1,15 @@
 # AutosaveBackup_Proto #
-This is a command-line program designed to watch a folder for a specified file and back up that file whenever it is created or modified. Currently, it is only designed to work on a Windows OS.
+This is a command-line program that watches a folder for a specified file and backs up that file whenever it is created or modified. Currently, it is designed to work only on a Windows OS.
 
 ## Usage ##
-[ ] TODO
+Download AutosaveBackup_Proto.jar from [the releases page](https://github.com/joncros/AutosaveBackup_Proto/releases "releases").
+Then open a command prompt, navigate to the folder you downloaded the jar to and type
+
+`java -jar AutosaveBackup.jar [path to file]`
+
+Where `[path to file]` is the absolute path to the file you want backed up, such as `c:\save folder\save.sav.` Do not surround the file path with quotation marks.
+
+When you want to stop watching for the file, type "quit" in the command prompt and then hit enter. Closing the command prompt will also stop the program.
 
 ## Classes ##
 
@@ -14,7 +21,7 @@ It passes a [CountDownLatch](https://docs.oracle.com/javase/8/docs/api/java/util
 #### ConsoleInputTask ####
 This class opens a BufferedReader to listen for input from the console the program was opened from. It runs in a separate thread to prevent blocking the rest of the program. 
 
-It calls the BufferedReader `ready()` method to check if anything has been typed into the console. If nothing was typed, it sleeps for 1 second before calling `ready()` again, repeating until something is typed into the console. If there is input to the console  matching the string "quit," it will signal the main thread using the CountDownLatch and then return.
+It calls the BufferedReader `ready()` method to check if anything has been typed into the console. If nothing was typed, it sleeps for 1 second before calling `ready()` again, repeating until something is typed into the console. If there is input to the console matching the string "quit," it will signal the main thread using the CountDownLatch and then return.
 
 #### Watcher ####
 Starts a new [WatchService (package java.nio.file)](https://docs.oracle.com/javase/8/docs/api/java/nio/file/WatchService.html "WatchService") which watches the folder for ENTRY_MODIFY filesystem events. 
