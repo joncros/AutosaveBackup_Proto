@@ -10,6 +10,9 @@
 <project name="AutosaveBackup_Proto" default="default" basedir=".">
     <description>Builds, tests, and runs the project AutosaveBackup_Proto.</description>
     <import file="nbproject/build-impl.xml"/>
+	<!-- <target name="-pre-jar">
+		<copy file="log4j2.xml" todir="${build.dir}/classes/" />
+	</target> -->
     <!--
 
     There exist several targets which are by default empty and which can be 
